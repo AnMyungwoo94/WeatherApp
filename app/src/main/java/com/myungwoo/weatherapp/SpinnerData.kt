@@ -1,3 +1,3 @@
-package com.myungwoo.weatherapp.spinner
+package com.myungwoo.weatherapp
 
 data class SpinnerData (val text: String,)

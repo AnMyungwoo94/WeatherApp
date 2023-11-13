@@ -26,15 +26,10 @@ class WeatherAdapter(val context: Context,  var data: MutableList<WeekendWeather
         val binding = holder.binding
         val weatherItem = data[position]
 
-        Log.e("weatherItem", weatherItem.dt_txt.toString())
-
         //날짜와 시간 불러오기
-        val inputFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        val outputDateFormat = SimpleDateFormat("MM-dd", Locale.getDefault())
-        val outputTimeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-        val date = inputFormat.parse(weatherItem.dt_txt)
-        binding.dayText.text = outputDateFormat.format(date)
-        binding.timeText.text = outputTimeFormat.format(date)
+        val splitParts = weatherItem.dt_txt.split(" ")
+        binding.dayText.text = splitParts[0].substring(5, 10).replace("-", "/")
+        binding.timeText.text  = splitParts[1].substring(0, 5)
         //END
 
         //섭씨온도로 바꿔주기

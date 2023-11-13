@@ -7,11 +7,10 @@ import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.TextView
-import androidx.recyclerview.widget.LinearLayoutManager
 import com.myungwoo.weatherapp.databinding.ActivityMainBinding
 import com.myungwoo.weatherapp.network.WeatherRepository
+import com.myungwoo.weatherapp.network.data.WeatherData
 import com.myungwoo.weatherapp.network.data.WeekendWeatherData
-import com.myungwoo.weatherapp.spinner.SpinnerData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -22,14 +21,14 @@ import java.util.Locale
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private val netWorkRepository = WeatherRepository()
-    var weatherData = mutableListOf<WeekendWeatherData>()
+    private var weatherData = mutableListOf<WeekendWeatherData>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        val spinnerItemIds = arrayOf(
+        val ApiId = arrayOf(
             1835847, 1843561, 1845136, 1843137,
             1835224, 1845106, 1845105, 1835327,
             1845457, 1841066, 1841808, 1838519, 1846265
@@ -40,11 +39,10 @@ class MainActivity : AppCompatActivity() {
         binding.recyclerView.adapter = recyclerViewAadapter
 
         //스피너 만들기
-        var spinnerList = resources.getStringArray(R.array.area)
-        val spinnerItems = spinnerList.map { SpinnerData(it) }
-        Log.e("spinnerList", spinnerList[5].toString())
-        val adapter = ArrayAdapter(this, R.layout.spinner_item, R.id.textView, spinnerList)
-        binding.searchSpinner.adapter = adapter
+        val spinnerList = resources.getStringArray(R.array.area) // res/values/arrays.xml에 정의된 "area" 배열에서 지역명을 가져와서 리스트로 만든다.
+        val spinnerItems = spinnerList.map { SpinnerData(it) } // 각 지역명을 SpinnerData 객체로 매핑하여 리스트를 생성한다.
+        val adapter = ArrayAdapter(this, R.layout.spinner_item, R.id.textView, spinnerList) // ArrayAdapter를 생성하여 스피너에 사용할 데이터와 레이아웃을 설정한다.
+        binding.searchSpinner.adapter = adapter // 생성한 어댑터를 스피너에 연결합니다.
         binding.searchSpinner.setSelection(0) // 스피너 처음값 지정
 
         binding.searchSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -54,58 +52,26 @@ class MainActivity : AppCompatActivity() {
                 position: Int,
                 id: Long
             ) {
-                //아이템 선택 잘 되는지 확인하는 로그
-                Log.d("ItemSelected", "Item selected at position $position")
+                val selectedItemId = ApiId[position] //선택된 API ID값
 
-                val selectedItemId = spinnerItemIds[position]
-                val selectedText = spinnerItems[position].text
-                Log.e("selectedText", selectedText)
-
-                //스피너 텍스트 업데이트
-                val textView = view?.findViewById<TextView>(R.id.textView)
+                val selectedText = spinnerItems[position].text //선택된 텍스트값
+                val textView = view?.findViewById<TextView>(R.id.textView)  //스피너 텍스트 업데이트
                 textView?.text = selectedText
 
-                //데이터 변경사항 알려주기
-                adapter.notifyDataSetChanged()
+                adapter.notifyDataSetChanged() //데이터 변경사항 알려주기
 
                 CoroutineScope(Dispatchers.Main).launch {
                     try {
-                        val currentList = netWorkRepository.getCurrentList(selectedItemId)
-                       val  weatherData = netWorkRepository.getWeekendList(selectedItemId)
-                        val weekendData = weatherData.list
+                        //선택된 selectedItemId 값으로 API 불러오기 즉, 지역별 ID값으로 불러오는것.
+                        val weatherCurrentList = netWorkRepository.getCurrentList(selectedItemId)
+                        val forecastWeatherData = netWorkRepository.getWeekendList(selectedItemId)
+
+                        //리사이클러뷰에 뿌려줄 Data를 weekendData 넣어주기
+                        val weekendData = forecastWeatherData.list
                         recyclerViewAadapter.updateData(weekendData)
-//                        Log.e("selectedText", currentList.toString())
-//                        Log.e("selectedText", weatherData.toString())
 
-
-                        //섭씨온도로 바꿔주기
-                        val formattedTemp = convertAndFormatTemperature(currentList.main.temp)
-                        binding.tempText.text = "${formattedTemp} ℃"
-                        val formattedTempMax =
-                            convertAndFormatTemperature(currentList.main.temp_max)
-                        binding.tempmaxText.text = "${formattedTempMax} ℃"
-                        val formattedTempMin =
-                            convertAndFormatTemperature(currentList.main.temp_min)
-                        binding.tempminText.text = "${formattedTempMin} ℃"
-                        //END
-
-                        //날짜와 시간 바꿔주기
-                        val date = Date(currentList.dt * 1000L)
-                        val dateFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                        val timeFormatter = SimpleDateFormat("a hh:mm", Locale.getDefault())
-                        val formattedDate = dateFormatter.format(date)
-                        val formattedTime = timeFormatter.format(date)
-                        binding.dayText.text = formattedDate
-                        binding.timeText.text = formattedTime
-                        Log.e("formattedTime", formattedTime.toString())
-                        //END
-
-                        binding.rainText.text = "${currentList.clouds.all}%"
-                        binding.humidityText.text = "${currentList.main.humidity}%"
-                        val windSpeedInKmPerH = currentList.wind.speed * 3.6
-                        val formattedWindSpeed = String.format("%.2f", windSpeedInKmPerH)
-                        binding.windText.text = "${formattedWindSpeed} km/h"
-
+                        //스피너 클릭시 지역별로 최근날씨 변경해주기
+                        updateCurrentList(weatherCurrentList)
 
                     } catch (e: Exception) {
                         // Handle network errors
@@ -120,10 +86,32 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateCurrentList(weatherCurrentList: WeatherData) {
+        //섭씨온도로 바꿔주기
+        binding.tempText.text = convertFormatTemperature(weatherCurrentList.main.temp)
+        binding.tempmaxText.text = convertFormatTemperature(weatherCurrentList.main.temp_max)
+        binding.tempminText.text = convertFormatTemperature(weatherCurrentList.main.temp_min)
+        //END
 
-    private fun convertAndFormatTemperature(kelvinTemp: Double): String {
-        val celsiusTemp = kelvinTemp - 273.15
-        return String.format("%.1f", celsiusTemp)
+        //날짜와 시간 바꿔주기
+        val date = Date(weatherCurrentList.dt * 1000L)
+        val formattedDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(date)
+        val formattedTime = SimpleDateFormat("a hh:mm", Locale.getDefault()).format(date)
+        binding.dayText.text = formattedDate
+        binding.timeText.text = formattedTime
+        //END
+
+        //강수량, 습도, 풍속 바꿔주기
+        binding.rainText.text = "${weatherCurrentList.clouds.all}%"
+        binding.humidityText.text = "${weatherCurrentList.main.humidity}%"
+        val windSpeedInKmPerH = weatherCurrentList.wind.speed * 3.6
+        val formattedWindSpeed = String.format("%.2f", windSpeedInKmPerH)
+        binding.windText.text = "${formattedWindSpeed} km/h"
+        //END
+    }
+
+    private fun convertFormatTemperature(kelvinTemp: Double): String {
+        return String.format("%.1f ℃", kelvinTemp - 273.15)
     }
 
 }
